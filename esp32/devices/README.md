@@ -160,6 +160,22 @@ arrives at once, so plain esptool can't upload its stub or write flash
 invalid`). `tools/muse/paced_esptool.py` takes esptool's arguments and sends 64
 bytes at a time at the line rate; `tools/muse/board.sh flash watcher` uses it.
 
+On battery with the screen off and voice resting, the Watcher cuts the LCD
+rail, suspends both codecs and the speaker amp, and lets the ESP32-S3
+light-sleep with its CPU powered down until the wheel or an expander input
+wakes it. CPU power-down saves about 0.44 mA of a 2.96 mA rest. Its retention
+memory, about 15 KB of internal RAM, is taken at boot and kept, and comes from
+the avatar's and audio's static buffers, which this profile keeps in PSRAM
+(`CONFIG_MUSE_STATIC_BUFFERS_IN_PSRAM`). `tools/muse/power.py` shows the last
+run on battery, with the time actually slept, the power locks that kept the
+chip awake (`muse_awake` is Muse itself, whenever it isn't resting), and
+internal RAM: free, lowest since boot, lowest while resting, what's left of
+the RAM retention memory can use, and whether the CPU powers down. The
+retention memory is already out of all of these, so resting shows no dip of
+its own: its lowest is the headroom Wi-Fi, BLE and the tunnel had while the
+board rested. The heartbeat log (`link.heartbeat`) prints the same as
+`int=free/largest min=lowest ret=free/largest cpu_pd=on|off`.
+
 The M5Stack StickS3 has 8 MB of flash, so it uses its own partition table with
 two smaller app slots. The front button is push-to-talk and the side button
 steps through the menu, as on the AIPI. Powering off from Muse turns off the
@@ -220,8 +236,16 @@ the normal battery readings (including while the screen sleeps). This changes
 only M5PM1 `PWR_CFG` (`0x06`) bit 4, preserving charging and the power rails.
 M5's IO expander (M5IOE1) switches the panel and touch resets, audio power
 and the amp; its power chip (M5PM1) reads the battery, charger and red key's
-live state (register `0x48`, bit 0). The IMU, RTC, vibration motor and Grove
-port aren't used yet. [M5Unified](https://github.com/m5stack/M5Unified),
+live state (register `0x48`, bit 0). Asleep on battery, the OLED's rail
+(3V3_L3B) and the audio rail (AU_L3B: codec and mic) are off and the chip
+light-sleeps until a rim key, or the M5PM1's click interrupt on GPIO12, wakes
+it. The red key's click arrives once it's released (about 125 ms later), and a
+press held at rest is found within a second, also while Wi-Fi naps. Waking,
+the panel takes about half a second longer to come back, and the first
+recording after a rest starts about 0.1 s later while the codec is set up
+again. The IMU is put back in suspend at boot; it, the RTC, vibration motor
+and Grove port aren't used yet.
+[M5Unified](https://github.com/m5stack/M5Unified),
 M5's [factory firmware](https://github.com/m5stack/M5StopWatch-UserDemo)
 and its [M5PM1 1.0.6 driver](https://github.com/m5stack/M5PM1/tree/1.0.6)
 are the references. It enumerates as the chip's own USB serial port, so
